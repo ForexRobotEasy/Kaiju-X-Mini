@@ -1,0 +1,151 @@
+mql5
+// Developer: Forex Robot Easy Team
+// Website: forexroboteasy.com
+
+// Include necessary libraries and modules
+#include <Trade\Trade.mqh>
+#include <Trade\PositionInfo.mqh>
+#include <Indicators\Indicator.mqh>
+#include <Tester\Include\Tester.mqh>
+#include <Terminal\TerminalInfo.mqh>
+
+// Define constants for risk management
+#define POSITION_SIZE 0.01 // Default position size
+#define MAX_POSITION_SIZE 0.1 // Maximum position size
+#define RISK_PERCENTAGE 2.0 // Risk percentage per trade
+
+// Define global variables
+CTrade trade; // Trade object for executing orders
+CPositionInfo posInfo; // PositionInfo object for managing positions
+CIndicator indicator; // Indicator object for technical analysis
+
+// Function to place a buy order
+void BuyOrder(double lotSize, double stopLoss, double takeProfit)
+{
+    // Get current symbol and market price
+    string symbol = Symbol();
+    double price = MarketInfo(symbol, MODE_BID);
+    
+    // Calculate position size based on risk percentage
+    double riskAmount = AccountBalance() * RISK_PERCENTAGE / 100;
+    double maxLoss = stopLoss - price;
+    lotSize = MathMin(riskAmount / maxLoss, MAX_POSITION_SIZE);
+    
+    // Place buy order
+    trade.Buy(lotSize, symbol, price, stopLoss, takeProfit);
+}
+
+// Function to place a sell order
+void SellOrder(double lotSize, double stopLoss, double takeProfit)
+{
+    // Get current symbol and market price
+    string symbol = Symbol();
+    double price = MarketInfo(symbol, MODE_ASK);
+    
+    // Calculate position size based on risk percentage
+    double riskAmount = AccountBalance() * RISK_PERCENTAGE / 100;
+    double maxLoss = price - stopLoss;
+    lotSize = MathMin(riskAmount / maxLoss, MAX_POSITION_SIZE);
+    
+    // Place sell order
+    trade.Sell(lotSize, symbol, price, stopLoss, takeProfit);
+}
+
+// Function to manage open positions
+void ManagePositions()
+{
+    // Get current symbol and market price
+    string symbol = Symbol();
+    double price = MarketInfo(symbol, MODE_BID);
+    
+    // Get open positions for the symbol
+    CPositionInfo::CPosition* position = posInfo.GetFirst(symbol);
+    
+    // Loop through open positions and manage them
+    while(position != NULL)
+    {
+        double stopLoss = position.StopLoss();
+        double takeProfit = position.TakeProfit();
+        
+        // Modify stop loss and take profit levels
+        posInfo.Modify(position, stopLoss, takeProfit);
+        
+        // Close position if take profit or stop loss is hit
+        if (price >= takeProfit || price <= stopLoss)
+        {
+            trade.Close(position);
+        }
+        
+        // Get next position
+        position = posInfo.GetNext(position);
+    }
+}
+
+// Function to integrate indicators into trading strategy
+void IntegrateIndicators()
+{
+    // Define indicator parameters
+    string symbol = Symbol();
+    ENUM_TIMEFRAMES timeframe = PERIOD_CURRENT;
+    int indicatorPeriod = 14;
+    
+    // Calculate indicator values
+    double indicatorValue = indicator.iRSI(symbol, timeframe, indicatorPeriod, PRICE_CLOSE, 0);
+    
+    // Use indicator values in trading strategy
+    if (indicatorValue > 70)
+    {
+        // Place sell order
+        SellOrder(POSITION_SIZE, NormalizeDouble(indicatorValue + 10, Digits), NormalizeDouble(indicatorValue - 10, Digits));
+    }
+    else if (indicatorValue < 30)
+    {
+        // Place buy order
+        BuyOrder(POSITION_SIZE, NormalizeDouble(indicatorValue - 10, Digits), NormalizeDouble(indicatorValue + 10, Digits));
+    }
+}
+
+// Function to backtest strategies using historical market data
+void BacktestStrategies()
+{
+    // Define backtesting parameters
+    string symbol = Symbol();
+    ENUM_TIMEFRAMES timeframe = PERIOD_H1;
+    datetime from = StrToTime('2021.01.01 00:00');
+    datetime to = StrToTime('2021.12.31 23:59');
+    
+    // Start backtesting
+    CTester::Run(symbol, timeframe, from, to);
+}
+
+// Function to retrieve and process real-time market data
+void ProcessRealTimeData()
+{
+    // Get current symbol and market price
+    string symbol = Symbol();
+    double price = MarketInfo(symbol, MODE_BID);
+    
+    // Print market data
+    Print('Symbol: ', symbol);
+    Print('Price: ', DoubleToString(price, Digits));
+}
+
+// Entry point of the program
+void OnStart()
+{
+    // Place buy and sell orders
+    BuyOrder(POSITION_SIZE, NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_STOPLEVEL), Digits), NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_POINT) * 100, Digits));
+    SellOrder(POSITION_SIZE, NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_STOPLEVEL), Digits), NormalizeDouble(SymbolInfoDouble(Symbol(), SYMBOL_POINT) * 100, Digits));
+    
+    // Manage open positions
+    ManagePositions();
+    
+    // Integrate indicators
+    IntegrateIndicators();
+    
+    // Backtest strategies
+    BacktestStrategies();
+    
+    // Process real-time market data
+    ProcessRealTimeData();
+}
